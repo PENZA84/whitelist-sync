@@ -10,7 +10,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
   actions: write
 
 concurrency:
@@ -166,35 +166,6 @@ jobs:
             echo "✅ Файл с проверенными ссылками успешно отправлен на GitVerse"
           else
             echo "GitVerse: нет изменений после проверки"
-          fi
-
-      - name: Сохранить файл в GitHub для GitHack
-        run: |
-          if [ -f working_whitelist.txt ]; then
-            cp -f working_whitelist.txt mobile-whitelist-1.txt
-          fi
-
-          echo "# Last updated: $(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S МСК')" >> mobile-whitelist-1.txt
-
-          git config user.name "GitHub Action Bot"
-          git config user.email "action@noreply.github.com"
-
-          git add mobile-whitelist-1.txt
-
-          if git commit -m "auto update checked whitelist $(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S МСК')"; then
-            for i in $(seq 1 8); do
-              git pull --rebase -X theirs origin main 2>/dev/null || true
-              if git push origin main; then
-                echo "✅ Файл сохранён в GitHub (GitHack: raw.githack.com/RoGo2026/whitelist-sync/main/mobile-whitelist-1.txt)"
-                exit 0
-              fi
-              echo "Push в GitHub не удался, повтор через $((i*10)) сек..."
-              sleep $((i*10))
-            done
-            echo "ОШИБКА: не удалось отправить файл в GitHub после 8 попыток"
-            exit 1
-          else
-            echo "GitHub: нет изменений (файл уже актуален)"
           fi
 
       - name: Обновить файл на Мос.Хаб (только рабочие ссылки)
