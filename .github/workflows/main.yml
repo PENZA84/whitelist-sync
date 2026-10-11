@@ -114,6 +114,7 @@ jobs:
         run: python3 check_links.py
 
       - name: Обновить файл на Мос.Хаб (только рабочие ссылки)
+        continue-on-error: true
         run: |
           CLONE_URL="https://oauth2:${{ secrets.WHITELIST_TOKEN }}@hub.mos.ru/84304/whitelist.git"
 
@@ -167,6 +168,61 @@ jobs:
             echo "✅ Файл с проверенными ссылками успешно отправлен на Мос.Хаб"
           else
             echo "Нет изменений после проверки"
+          fi
+
+      - name: Обновить файл на GitVerse (только рабочие ссылки)
+        run: |
+          CLONE_URL="https://RoGo:${{ secrets.GITVERSE_TOKEN }}@gitverse.ru/RoGo/mobile-whitelist.git"
+
+          ok=0
+          for i in $(seq 1 8); do
+            echo "Клонирование GitVerse, попытка $i..."
+            rm -rf ./repo-gv
+            if git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 clone "$CLONE_URL" ./repo-gv; then
+              ok=1
+              break
+            fi
+            echo "GitVerse не ответил, повтор через $((i*10)) сек..."
+            sleep $((i*10))
+          done
+          if [ "$ok" != "1" ]; then
+            echo "ОШИБКА: не удалось клонировать GitVerse после 8 попыток"
+            exit 1
+          fi
+
+          # Если скрипт проверки выдал результат, берем его, иначе берем общий список
+          if [ -f working_whitelist.txt ]; then
+            cp -f working_whitelist.txt ./repo-gv/mobile-whitelist-1.txt
+          else
+            cp -f mobile-whitelist-1.txt ./repo-gv/mobile-whitelist-1.txt
+          fi
+
+          echo "# Last updated: $(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S МСК')" >> ./repo-gv/mobile-whitelist-1.txt
+
+          cd ./repo-gv
+          git config user.name "GitHub Action Bot"
+          git config user.email "action@noreply.github.com"
+
+          git add mobile-whitelist-1.txt
+
+          if git commit -m "auto update checked whitelist $(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S МСК')"; then
+            pushed=0
+            for i in $(seq 1 8); do
+              git pull --rebase -X theirs origin master 2>/dev/null || true
+              if git push origin HEAD:master; then
+                pushed=1
+                break
+              fi
+              echo "Push в GitVerse не удался, повтор через $((i*10)) сек..."
+              sleep $((i*10))
+            done
+            if [ "$pushed" != "1" ]; then
+              echo "ОШИБКА: не удалось отправить файл на GitVerse после 8 попыток"
+              exit 1
+            fi
+            echo "✅ Файл с проверенными ссылками успешно отправлен на GitVerse"
+          else
+            echo "GitVerse: нет изменений после проверки"
           fi
 
   auto-retry:
