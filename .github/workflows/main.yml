@@ -172,14 +172,25 @@ jobs:
   auto-retry:
     name: Повторный запуск workflow при ошибке (один раз)
     needs: [collect-sources, test-and-filter]
-    if: ${{ always() && inputs.retry != 'true' && (needs.collect-sources.result == 'failure' || needs.test-and-filter.result == 'failure') }}
+    if: ${{ !cancelled() && inputs.retry != 'true' && (needs.collect-sources.result == 'failure' || needs.test-and-filter.result == 'failure') }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Перезапустить workflow (одна повторная попытка)
         run: |
-          echo "Ожидание 150 секунд перед повторным запуском..."
-          sleep 150
+          echo "Ожидание перед повторным запуском. Можно отменить — ожидание прервётся сразу."
+          for i in $(seq 1 15); do
+            sleep 10
+            st=$(curl -sS -H "Authorization: Bearer ${{ github.token }}" \
+                 -H "Accept: application/vnd.github+json" \
+                 "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+                 | tr -d ' \n')
+            echo "ожидание $((i*10)) c..."
+            if echo "$st" | grep -q '"status":"completed"'; then
+              echo "Запуск отменён/завершён — повторный запуск не выполняю."
+              exit 0
+            fi
+          done
           curl -sS -X POST \
             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/main.yml/dispatches" \
             -H "Authorization: Bearer ${{ github.token }}" \
