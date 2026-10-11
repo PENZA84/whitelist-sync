@@ -91,7 +91,7 @@ jobs:
   test-and-filter:
     needs: collect-sources
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -115,7 +115,24 @@ jobs:
 
       - name: Обновить файл на Мос.Хаб (только рабочие ссылки)
         run: |
-          git clone https://oauth2:${{ secrets.WHITELIST_TOKEN }}@hub.mos.ru/84304/whitelist.git ./repo
+          CLONE_URL="https://oauth2:${{ secrets.WHITELIST_TOKEN }}@hub.mos.ru/84304/whitelist.git"
+
+          # Клонирование с повторами: Mos.Hub периодически отвечает 502
+          ok=0
+          for i in $(seq 1 8); do
+            echo "Клонирование Мос.Хаб, попытка $i..."
+            rm -rf ./repo
+            if git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 clone "$CLONE_URL" ./repo; then
+              ok=1
+              break
+            fi
+            echo "Мос.Хаб не ответил (502/таймаут), повтор через $((i*10)) сек..."
+            sleep $((i*10))
+          done
+          if [ "$ok" != "1" ]; then
+            echo "ОШИБКА: не удалось клонировать Мос.Хаб после 8 попыток"
+            exit 1
+          fi
 
           # Если скрипт проверки выдал результат, берем его, иначе берем общий список
           if [ -f working_whitelist.txt ]; then
@@ -133,13 +150,20 @@ jobs:
           git add mobile-whitelist-1.txt
 
           if git commit -m "auto update checked whitelist $(date -u +'%Y-%m-%d %H:%M:%S UTC')"; then
-            for i in 1 2 3 4 5; do
-              if git pull --rebase -X theirs origin main; then
+            pushed=0
+            for i in $(seq 1 8); do
+              git pull --rebase -X theirs origin main 2>/dev/null || true
+              if git push origin HEAD:main; then
+                pushed=1
                 break
               fi
-              sleep 5
+              echo "Push не удался (502/таймаут), повтор через $((i*10)) сек..."
+              sleep $((i*10))
             done
-            git push origin HEAD:main
+            if [ "$pushed" != "1" ]; then
+              echo "ОШИБКА: не удалось отправить файл на Мос.Хаб после 8 попыток"
+              exit 1
+            fi
             echo "✅ Файл с проверенными ссылками успешно отправлен на Мос.Хаб"
           else
             echo "Нет изменений после проверки"
