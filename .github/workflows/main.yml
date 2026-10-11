@@ -141,7 +141,7 @@ jobs:
             cp -f mobile-whitelist-1.txt ./repo/mobile-whitelist-1.txt
           fi
 
-          echo "# Last updated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> ./repo/mobile-whitelist-1.txt
+          echo "# Last updated: $(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S МСК')" >> ./repo/mobile-whitelist-1.txt
 
           cd ./repo
           git config user.name "GitHub Action Bot"
@@ -149,7 +149,7 @@ jobs:
 
           git add mobile-whitelist-1.txt
 
-          if git commit -m "auto update checked whitelist $(date -u +'%Y-%m-%d %H:%M:%S UTC')"; then
+          if git commit -m "auto update checked whitelist $(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S МСК')"; then
             pushed=0
             for i in $(seq 1 8); do
               git pull --rebase -X theirs origin main 2>/dev/null || true
