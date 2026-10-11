@@ -115,7 +115,7 @@ jobs:
 
       - name: Обновить файл на Мос.Хаб (только рабочие ссылки)
         run: |
-          git clone https://oauth2:${{ secrets.MOSHUB_TOKEN }}@hub.mos.ru/84304/whitelist.git ./repo
+          git clone https://oauth2:${{ secrets.WHITELIST_TOKEN }}@hub.mos.ru/84304/whitelist.git ./repo
 
           # Если скрипт проверки выдал результат, берем его, иначе берем общий список
           if [ -f working_whitelist.txt ]; then
