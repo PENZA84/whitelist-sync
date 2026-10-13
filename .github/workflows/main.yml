@@ -1,4 +1,4 @@
-name: Скачивать, проверять и обновлять mobile-whitelist-1.txt (Mos.Hub + GitVerse + GitHub)
+name: Скачивать, проверять и обновлять mobile-whitelist-1.txt (Мос.Хаб + GitVerse)
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
   actions: write
 
 concurrency:
@@ -113,7 +113,67 @@ jobs:
       - name: Запустить проверку ссылок через Xray-core
         run: python3 check_links.py
 
-      - name: Обновить файл на GitVerse (только рабочие ссылки)
+      # ОСНОВНОЙ получатель: Мос.Хаб (hub.mos.ru) — гит-платформа на домене mos.ru
+      - name: Обновить файл на Мос.Хаб (только рабочие ссылки)
+        continue-on-error: true
+        run: |
+          CLONE_URL="https://oauth2:${{ secrets.WHITELIST_TOKEN }}@hub.mos.ru/84304/whitelist.git"
+
+          # Клонирование с повторами: Mos.Hub периодически отвечает 502
+          ok=0
+          for i in $(seq 1 8); do
+            echo "Клонирование Мос.Хаб, попытка $i..."
+            rm -rf ./repo-mh
+            if git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 clone "$CLONE_URL" ./repo-mh; then
+              ok=1
+              break
+            fi
+            echo "Мос.Хаб не ответил (502/таймаут), повтор через $((i*10)) сек..."
+            sleep $((i*10))
+          done
+          if [ "$ok" != "1" ]; then
+            echo "ОШИБКА: не удалось клонировать Мос.Хаб после 8 попыток"
+            exit 1
+          fi
+
+          # Если скрипт проверки выдал результат, берем его, иначе берем общий список
+          if [ -f working_whitelist.txt ]; then
+            cp -f working_whitelist.txt ./repo-mh/mobile-whitelist-1.txt
+          else
+            cp -f mobile-whitelist-1.txt ./repo-mh/mobile-whitelist-1.txt
+          fi
+
+          echo "# Last updated: $(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S МСК')" >> ./repo-mh/mobile-whitelist-1.txt
+
+          cd ./repo-mh
+          git config user.name "GitHub Action Bot"
+          git config user.email "action@noreply.github.com"
+
+          git add mobile-whitelist-1.txt
+
+          if git commit -m "auto update checked whitelist $(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S МСК')"; then
+            pushed=0
+            for i in $(seq 1 8); do
+              git pull --rebase -X theirs origin main 2>/dev/null || true
+              if git push origin HEAD:main; then
+                pushed=1
+                break
+              fi
+              echo "Push в Мос.Хаб не удался (502/таймаут), повтор через $((i*10)) сек..."
+              sleep $((i*10))
+            done
+            if [ "$pushed" != "1" ]; then
+              echo "ОШИБКА: не удалось отправить файл на Мос.Хаб после 8 попыток"
+              exit 1
+            fi
+            echo "✅ Файл с проверенными ссылками успешно отправлен на Мос.Хаб"
+          else
+            echo "Мос.Хаб: нет изменений после проверки"
+          fi
+
+      # РЕЗЕРВ: GitVerse (на случай, если Мос.Хаб недоступен)
+      - name: Обновить файл на GitVerse (резерв, только рабочие ссылки)
+        continue-on-error: true
         run: |
           CLONE_URL="https://RoGo:${{ secrets.GITVERSE_TOKEN }}@gitverse.ru/RoGo/mobile-whitelist.git"
 
@@ -166,92 +226,6 @@ jobs:
             echo "✅ Файл с проверенными ссылками успешно отправлен на GitVerse"
           else
             echo "GitVerse: нет изменений после проверки"
-          fi
-
-      - name: Сохранить файл в GitHub (GitHack и Яндекс-зеркало)
-        run: |
-          if [ -f working_whitelist.txt ]; then
-            cp -f working_whitelist.txt mobile-whitelist-1.txt
-          fi
-
-          echo "# Last updated: $(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S МСК')" >> mobile-whitelist-1.txt
-
-          git config user.name "GitHub Action Bot"
-          git config user.email "action@noreply.github.com"
-
-          git add mobile-whitelist-1.txt
-
-          if git commit -m "auto update checked whitelist $(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S МСК')"; then
-            for i in $(seq 1 8); do
-              git pull --rebase -X theirs origin main 2>/dev/null || true
-              if git push origin main; then
-                echo "✅ Проверенный файл сохранён в GitHub (git raw + GitHack + Яндекс-зеркало)"
-                exit 0
-              fi
-              echo "Push в GitHub не удался, повтор через $((i*10)) сек..."
-              sleep $((i*10))
-            done
-            echo "ОШИБКА: не удалось отправить файл в GitHub после 8 попыток"
-            exit 1
-          else
-            echo "GitHub: нет изменений (файл уже актуален)"
-          fi
-
-      # НОВЫЙ ШАГ: синхронизация с Mos.Hub (hub.mos.ru) — гит-платформа на домене mos.ru
-      - name: Обновить файл на Мос.Хаб (только рабочие ссылки)
-        continue-on-error: true
-        run: |
-          CLONE_URL="https://oauth2:${{ secrets.WHITELIST_TOKEN }}@hub.mos.ru/84304/whitelist.git"
-
-          ok=0
-          for i in $(seq 1 8); do
-            echo "Клонирование Mos.Hub, попытка $i..."
-            rm -rf ./repo-mh
-            if git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 clone "$CLONE_URL" ./repo-mh; then
-              ok=1
-              break
-            fi
-            echo "Mos.Hub не ответил, повтор через $((i*10)) сек..."
-            sleep $((i*10))
-          done
-          if [ "$ok" != "1" ]; then
-            echo "::warning::Mos.Hub: не удалось клонировать репозиторий после 8 попыток"
-            exit 1
-          fi
-
-          # Если скрипт проверки выдал результат, берем его, иначе берем общий список
-          if [ -f working_whitelist.txt ]; then
-            cp -f working_whitelist.txt ./repo-mh/mobile-whitelist-1.txt
-          else
-            cp -f mobile-whitelist-1.txt ./repo-mh/mobile-whitelist-1.txt
-          fi
-
-          echo "# Last updated: $(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S МСК')" >> ./repo-mh/mobile-whitelist-1.txt
-
-          cd ./repo-mh
-          git config user.name "GitHub Action Bot"
-          git config user.email "action@noreply.github.com"
-
-          git add mobile-whitelist-1.txt
-
-          if git commit -m "auto update checked whitelist $(TZ='Europe/Moscow' date +'%Y-%m-%d %H:%M:%S МСК')"; then
-            pushed=0
-            for i in $(seq 1 8); do
-              git pull --rebase -X theirs origin main 2>/dev/null || true
-              if git push origin HEAD:main; then
-                pushed=1
-                break
-              fi
-              echo "Push в Mos.Hub не удался, повтор через $((i*10)) сек..."
-              sleep $((i*10))
-            done
-            if [ "$pushed" != "1" ]; then
-              echo "::warning::Mos.Hub: не удалось отправить файл после 8 попыток"
-              exit 1
-            fi
-            echo "✅ Файл с проверенными ссылками успешно отправлен на Mos.Hub"
-          else
-            echo "Mos.Hub: нет изменений после проверки"
           fi
 
   auto-retry:
