@@ -198,10 +198,10 @@ jobs:
           fi
 
       # НОВЫЙ ШАГ: синхронизация с Mos.Hub (hub.mos.ru) — гит-платформа на домене mos.ru
-      - name: Обновить файл на Mos.Hub (только рабочие ссылки)
+      - name: Обновить файл на Мос.Хаб (только рабочие ссылки)
         continue-on-error: true
         run: |
-          CLONE_URL="https://oauth2:${{ secrets.MOSHUB_TOKEN }}@hub.mos.ru/84304/whitelist.git"
+          CLONE_URL="https://oauth2:${{ secrets.WHITELIST_TOKEN }}@hub.mos.ru/84304/whitelist.git"
 
           ok=0
           for i in $(seq 1 8); do
